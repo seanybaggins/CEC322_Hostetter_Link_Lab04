@@ -1,0 +1,1 @@
+"./startup_ccs.obj" "./timers.obj" "./drivers/buttons.obj" "./drivers/cfal96x64x16.obj" "../timers_ccs.cmd" -llibc.a -l"C:/ti/TivaWare_C_Series-2.1.3.156/driverlib/ccs/Debug/driverlib.lib" -l"C:/ti/TivaWare_C_Series-2.1.3.156/grlib/ccs/Debug/grlib.lib" 
