@@ -21,8 +21,6 @@
 // This is part of revision 2.1.3.156 of the DK-TM4C123G Firmware Package.
 //
 //*****************************************************************************
-// This is a changed line!!!!!!!!
-// This is another changed line!
 // Base includes with the timers Examples
 #include <stdint.h>
 #include <stdbool.h>
