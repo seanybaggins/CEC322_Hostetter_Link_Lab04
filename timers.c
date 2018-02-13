@@ -1,26 +1,3 @@
-//*****************************************************************************
-//
-// timers.c - Timers example.
-//
-// Copyright (c) 2011-2016 Texas Instruments Incorporated.  All rights reserved.
-// Software License Agreement
-// 
-// Texas Instruments (TI) is supplying this software for use solely and
-// exclusively on TI's microcontroller products. The software is owned by
-// TI and/or its suppliers, and is protected under applicable copyright
-// laws. You may not combine this software with "viral" open-source
-// software in order to form a larger program.
-// 
-// THIS SOFTWARE IS PROVIDED "AS IS" AND WITH ALL FAULTS.
-// NO WARRANTIES, WHETHER EXPRESS, IMPLIED OR STATUTORY, INCLUDING, BUT
-// NOT LIMITED TO, IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-// A PARTICULAR PURPOSE APPLY TO THIS SOFTWARE. TI SHALL NOT, UNDER ANY
-// CIRCUMSTANCES, BE LIABLE FOR SPECIAL, INCIDENTAL, OR CONSEQUENTIAL
-// DAMAGES, FOR ANY REASON WHATSOEVER.
-// 
-// This is part of revision 2.1.3.156 of the DK-TM4C123G Firmware Package.
-//
-//*****************************************************************************
 // Base includes with the timers Examples
 #include <stdint.h>
 #include <stdbool.h>
@@ -45,35 +22,24 @@
 // Necessary for ADC
 #include "driverlib/adc.h"
 
+// Necessary for blinking LED
+#include "driverlib/gpio.h"
 
 #define ADC_SEQUENCE_3 3
 
-//*****************************************************************************
-//
-//! \addtogroup example_list
-//! <h1>Timer (timers)</h1>
-//!
-//! This example application demonstrates the use of the timers to generate
-//! periodic interrupts.  One timer is set up to interrupt once per second and
-//! the other to interrupt twice per second; each interrupt handler will toggle
-//! its own indicator on the display.
-//
-//*****************************************************************************
+// Necessary for blinking light clock
+#define FIVE_PERCENT_CYCLE_ON 20000
+#define NIENTYFIVE_PERCENT_CYCLE_OFF 380000
 
-//*****************************************************************************
-//
-// Flags that contain the current value of the interrupt indicator as displayed
-// on the CSTN display.
-//
-//*****************************************************************************
-uint32_t g_ui32Flags;
+// Necessary for displayInfoOnBoard()
+typedef enum {
+    DISPLAY_OFF = 0, DISPLAY_NUMBER = 1, DISPLAY_BAR = 2, DISPLAY_COUNT = 3
+} DisplayMode;
 
-//*****************************************************************************
-//
-// Graphics context used to show text on the CSTN display.
-//
-//*****************************************************************************
-tContext g_sContext;
+//****************************************************************************
+// Global
+//****************************************************************************
+tContext sContext;
 
 //*****************************************************************************
 //
@@ -88,6 +54,12 @@ __error__(char *pcFilename, uint32_t ui32Line)
 #endif
 
 //*****************************************************************************
+// Prototypes
+//*****************************************************************************
+void diplayADCInfoOnBoard(uint8_t* formatString,uint32_t pui32ADC0Value,
+                          uint32_t yLocationOnDisplay, DisplayMode displayMode);
+void clearBlack(void);
+//*****************************************************************************
 //
 // The interrupt handler for the first timer interrupt.
 //
@@ -95,23 +67,33 @@ __error__(char *pcFilename, uint32_t ui32Line)
 void
 Timer0IntHandler(void)
 {
-    //
     // Clear the timer interrupt.
-    //
     TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
 
-    //
-    // Toggle the flag for the first timer.
-    //
-    HWREGBITW(&g_ui32Flags, 0) ^= 1;
+    if (ADCIntStatus(ADC0_BASE, ADC_SEQUENCE_3, false)) {
+        // Initializing variables
+        uint32_t pui32ADC0Value[1];
+        uint32_t desiredFrequency;
 
-    //
-    // Update the interrupt status on the display.
-    //
-    IntMasterDisable();
-    GrStringDraw(&g_sContext, (HWREGBITW(&g_ui32Flags, 0) ? "1" : "0"), -1, 68,
-                 26, 1);
-    IntMasterEnable();
+        // Clear the OLED
+        clearBlack();
+
+        // Clear the ADC interrupt flag.
+        ADCIntClear(ADC0_BASE, ADC_SEQUENCE_3);
+
+        ADCSequenceDataGet(ADC0_BASE, ADC_SEQUENCE_3, pui32ADC0Value);
+
+        // Calculating desired frequency
+        desiredFrequency = pui32ADC0Value[0] * 79;
+
+        // Display required frequency to display
+        diplayADCInfoOnBoard("Requested: %d", desiredFrequency, 25, DISPLAY_NUMBER);
+
+
+
+        ADCProcessorTrigger(ADC0_BASE, ADC_SEQUENCE_3);
+    }
+
 }
 
 //*****************************************************************************
@@ -122,36 +104,14 @@ Timer0IntHandler(void)
 void
 Timer1IntHandler(void)
 {
-    //
     // Clear the timer interrupt.
-    //
     TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
 
-    //
-    // Toggle the flag for the second timer.
-    //
-    HWREGBITW(&g_ui32Flags, 1) ^= 1;
-
-    //
-    // Update the interrupt status on the display.
-    //
-    IntMasterDisable();
-    GrStringDraw(&g_sContext, (HWREGBITW(&g_ui32Flags, 1) ? "1" : "0"), -1, 68,
-                 36, 1);
-    IntMasterEnable();
 }
 
-//*****************************************************************************
-//
-// This example application demonstrates the use of the timers to generate
-// periodic interrupts.
-//
-//*****************************************************************************
 int
 main(void)
 {
-    tRectangle sRect;
-
     // Enable lazy stacking for interrupt handlers.  This allows floating-point
     // instructions to be used within interrupt handlers, but at the expense of
     // extra stack usage.
@@ -161,16 +121,19 @@ main(void)
     SysCtlClockSet(SYSCTL_SYSDIV_1 | SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
                        SYSCTL_XTAL_16MHZ);
 
+    // Initialize the display driver.
+    CFAL96x64x16Init();
+
     //************************************************************************
     // Disabling all peripherals
     //************************************************************************
     IntMasterDisable();
 
-    // Initialize the display driver.
-    CFAL96x64x16Init();
 
     // Initialize the graphics context and find the middle X coordinate.
-    GrContextInit(&g_sContext, &g_sCFAL96x64x16);
+    GrContextInit(&sContext, &g_sCFAL96x64x16);
+    GrContextFontSet(&sContext, g_psFontFixed6x8);
+    GrContextForegroundSet(&sContext, ClrRed);
 
     //************************************************************************
     // Enabling the peripherals
@@ -198,6 +161,7 @@ main(void)
                             (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
                              UART_CONFIG_PAR_NONE));
 
+    ADCSequenceDisable(ADC0_BASE, ADC_SEQUENCE_3);
     // Configuring the ADC to read from the ADC0_BASE, 3rd sequence,
     // trigger processing, and to take priority
     ADCSequenceConfigure(ADC0_BASE, ADC_SEQUENCE_3, ADC_TRIGGER_PROCESSOR, 0);
@@ -205,28 +169,23 @@ main(void)
     // Configuring the ADCSequence to read from the 0 step
     ADCSequenceStepConfigure(ADC0_BASE, ADC_SEQUENCE_3, 0, ADC_CTL_CH7 |
                                               ADC_CTL_IE | ADC_CTL_END);
+    // Enabling sequence
+    ADCSequenceEnable(ADC0_BASE, ADC_SEQUENCE_3);
 
     // Enable the GPIO pin for the LED (PG2).  Set the direction as output, and
     // enable the GPIO pin for digital function.
     GPIOPinTypeGPIOOutput(GPIO_PORTG_BASE, GPIO_PIN_2);
-
-    // Configuring the two 32-bit periodic timers.
-    TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);
-    TimerConfigure(TIMER1_BASE, TIMER_CFG_PERIODIC);
-    TimerLoadSet(TIMER0_BASE, TIMER_A, SysCtlClockGet());
-    TimerLoadSet(TIMER1_BASE, TIMER_A, SysCtlClockGet() / 2);
-
-    //************************************************************************
-    // Clearing Interrupt Flags and triggering ADC sequence conversion
-    //************************************************************************
-    ADCIntClear(ADC0_BASE, ADC_SEQUENCE_3);
-    ADCProcessorTrigger(ADC0_BASE, ADC_SEQUENCE_3);
 
     //************************************************************************
     // Enable processor interrupts.
     //************************************************************************
     IntMasterEnable();
 
+    // Configuring the two 32-bit periodic timers.
+    TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);
+    TimerConfigure(TIMER1_BASE, TIMER_CFG_PERIODIC);
+    TimerLoadSet(TIMER0_BASE, TIMER_A, SysCtlClockGet());
+    TimerLoadSet(TIMER1_BASE, TIMER_A, SysCtlClockGet() / 2);
 
     //
     // Setup the interrupts for the timer timeouts.
@@ -242,10 +201,76 @@ main(void)
     TimerEnable(TIMER0_BASE, TIMER_A);
     TimerEnable(TIMER1_BASE, TIMER_A);
 
-    //
-    // Loop forever while the timers run.
-    //
+    //************************************************************************
+    // Initializing Local Variables
+    //************************************************************************
+    uint32_t blinkingLightCounter = 0;
+
+    //************************************************************************
+    // starting functional calls and main while loop
+    //************************************************************************
+
+    // Clearing interrupt flag
+    ADCIntClear(ADC0_BASE, ADC_SEQUENCE_3);
+
+    // Start reading the ADC
+    ADCProcessorTrigger(ADC0_BASE, ADC_SEQUENCE_3);
+
+    bool enableLED = 1;
     while(1)
     {
+        // Blinking the LED
+        if (blinkingLightCounter %
+                (FIVE_PERCENT_CYCLE_ON + NIENTYFIVE_PERCENT_CYCLE_OFF) <=
+                FIVE_PERCENT_CYCLE_ON && enableLED == 1) {
+            GPIOPinWrite(GPIO_PORTG_BASE, GPIO_PIN_2, GPIO_PIN_2);
+        }
+        else {
+            GPIOPinWrite(GPIO_PORTG_BASE, GPIO_PIN_2, 0);
+        }
+        blinkingLightCounter++;
     }
 }
+
+void diplayADCInfoOnBoard(uint8_t* formatString,uint32_t pui32ADC0Value, uint32_t yLocationOnDisplay, DisplayMode displayMode) {
+    if(displayMode == DISPLAY_NUMBER) {
+        uint8_t displayDataBuffer[16];
+
+        GrContextForegroundSet(&sContext, ClrWhite);
+
+        sprintf((char*)displayDataBuffer, (char*)formatString, pui32ADC0Value);
+
+        // Prints number to the OLED display
+        GrStringDrawCentered(&sContext,(char*)displayDataBuffer, -1,
+                             GrContextDpyWidthGet(&sContext) / 2, yLocationOnDisplay, true);
+    }
+    else if(displayMode == DISPLAY_BAR) {
+        tRectangle sRect;
+
+        sRect.i16XMin = 0;
+        sRect.i16YMin = yLocationOnDisplay - 4;
+        sRect.i16YMax = yLocationOnDisplay + 4;
+
+        // Scaling data down from max of 4095 to fit on screen
+        sRect.i16XMax = pui32ADC0Value / 43;
+
+        // Setting color of display
+        GrContextForegroundSet(&sContext, ClrWhite);
+
+        // Writing bar to screen
+        GrRectFill(&sContext, &sRect);
+    }
+}
+
+// Purpose: Prints a black box over the entire OLED display
+void clearBlack(void){
+
+    tRectangle sRect;
+    sRect.i16XMin = 0;
+    sRect.i16YMin = 0;
+    sRect.i16XMax = GrContextDpyWidthGet(&sContext) - 1;
+    sRect.i16YMax = 69;
+    GrContextForegroundSet(&sContext, ClrBlack);
+    GrRectFill(&sContext, &sRect);
+}
+
