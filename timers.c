@@ -37,10 +37,12 @@ typedef enum {
 } DisplayMode;
 
 //****************************************************************************
-// Global
+// Globals
 //****************************************************************************
-tContext sContext;
-
+static tContext sContext;
+static uint32_t countsPerSecond;
+static uint32_t characterFromComputer;
+static bool enableCounter = 0;
 //*****************************************************************************
 //
 // The error routine that is called if the driver library encounters an error.
@@ -56,9 +58,11 @@ __error__(char *pcFilename, uint32_t ui32Line)
 //*****************************************************************************
 // Prototypes
 //*****************************************************************************
-void diplayADCInfoOnBoard(uint8_t* formatString,uint32_t pui32ADC0Value,
+void diplayADCInfoOnBoard(uint8_t* formatString,uint32_t ADCValue,
                           uint32_t yLocationOnDisplay, DisplayMode displayMode);
 void clearBlack(void);
+void UARTSend(const uint8_t *pui8Buffer);
+void printMainMenu(void);
 //*****************************************************************************
 //
 // The interrupt handler for the first timer interrupt.
@@ -72,7 +76,7 @@ Timer0IntHandler(void)
 
     if (ADCIntStatus(ADC0_BASE, ADC_SEQUENCE_3, false)) {
         // Initializing variables
-        uint32_t pui32ADC0Value[1];
+        uint32_t ADCValue[1];
         uint32_t desiredFrequency;
 
         // Clear the OLED
@@ -81,15 +85,33 @@ Timer0IntHandler(void)
         // Clear the ADC interrupt flag.
         ADCIntClear(ADC0_BASE, ADC_SEQUENCE_3);
 
-        ADCSequenceDataGet(ADC0_BASE, ADC_SEQUENCE_3, pui32ADC0Value);
+        // Get the data
+        ADCSequenceDataGet(ADC0_BASE, ADC_SEQUENCE_3, ADCValue);
 
         // Calculating desired frequency
-        desiredFrequency = pui32ADC0Value[0] * 79;
+        desiredFrequency = ADCValue[0] * 159;
 
-        // Display required frequency to display
-        diplayADCInfoOnBoard("Requested: %d", desiredFrequency, 25, DISPLAY_NUMBER);
+        // Display requested and actual frequency to display
+        diplayADCInfoOnBoard("Reqst: %d", desiredFrequency, 15, DISPLAY_NUMBER);
+        diplayADCInfoOnBoard("Srv: %d", countsPerSecond, 30, DISPLAY_NUMBER);
 
+        // Changing Frequency Requested should the requested and actual not match
+        if (countsPerSecond != desiredFrequency) {
+            TimerDisable(TIMER1_BASE, TIMER_A);
+            TimerLoadSet(TIMER1_BASE, TIMER_A, SysCtlClockGet() / desiredFrequency);
+            TimerEnable(TIMER1_BASE,TIMER_A);
+        }
 
+        // Checking if a character is available
+        if (UARTCharsAvail(UART0_BASE)) {
+            characterFromComputer = UARTCharGetNonBlocking(UART0_BASE);
+        }
+        else {
+            characterFromComputer = '\0';
+        }
+
+        // Resetting counts per second
+        countsPerSecond = 0;
 
         ADCProcessorTrigger(ADC0_BASE, ADC_SEQUENCE_3);
     }
@@ -106,6 +128,8 @@ Timer1IntHandler(void)
 {
     // Clear the timer interrupt.
     TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
+    //diplayADCInfoOnBoard(" %d", countsPerSecond, 50, DISPLAY_NUMBER);
+    countsPerSecond++;
 
 }
 
@@ -205,7 +229,7 @@ main(void)
     // Initializing Local Variables
     //************************************************************************
     uint32_t blinkingLightCounter = 0;
-
+    countsPerSecond = 0;
     //************************************************************************
     // starting functional calls and main while loop
     //************************************************************************
@@ -228,17 +252,23 @@ main(void)
         else {
             GPIOPinWrite(GPIO_PORTG_BASE, GPIO_PIN_2, 0);
         }
+
+        switch(tolower(characterFromComputer)) {
+            case 'm' :
+
+        }
+
         blinkingLightCounter++;
     }
 }
 
-void diplayADCInfoOnBoard(uint8_t* formatString,uint32_t pui32ADC0Value, uint32_t yLocationOnDisplay, DisplayMode displayMode) {
+void diplayADCInfoOnBoard(uint8_t* formatString,uint32_t ADCValue, uint32_t yLocationOnDisplay, DisplayMode displayMode) {
     if(displayMode == DISPLAY_NUMBER) {
         uint8_t displayDataBuffer[16];
 
         GrContextForegroundSet(&sContext, ClrWhite);
 
-        sprintf((char*)displayDataBuffer, (char*)formatString, pui32ADC0Value);
+        sprintf((char*)displayDataBuffer, (char*)formatString, ADCValue);
 
         // Prints number to the OLED display
         GrStringDrawCentered(&sContext,(char*)displayDataBuffer, -1,
@@ -252,7 +282,7 @@ void diplayADCInfoOnBoard(uint8_t* formatString,uint32_t pui32ADC0Value, uint32_
         sRect.i16YMax = yLocationOnDisplay + 4;
 
         // Scaling data down from max of 4095 to fit on screen
-        sRect.i16XMax = pui32ADC0Value / 43;
+        sRect.i16XMax = ADCValue / 43;
 
         // Setting color of display
         GrContextForegroundSet(&sContext, ClrWhite);
@@ -274,3 +304,23 @@ void clearBlack(void){
     GrRectFill(&sContext, &sRect);
 }
 
+ // Purpose: Send Characters to the UART Menu console
+void UARTSend(const uint8_t *pui8Buffer) {
+    // Loop while there are more characters to send.
+    uint32_t index;
+    for(index = 0; index < strlen((const char *)pui8Buffer); index++)
+    {
+        // Write the next character to the UART.
+        UARTCharPut(UART0_BASE, pui8Buffer[index]);
+    }
+}
+
+void printMainMenu(void) {
+    UARTSend("\r\n\nT - Toggle the LED\r\n");
+    UARTSend("S - Splash Screen (2s)\r\n");
+    UARTSend("1 - Toggle Data Display 1\n\r");
+    UARTSend("2 - Toggle Data Display 2\n\r");
+    UARTSend("3 - Toggle Data Display 3\n\r");
+    UARTSend("M - Return to Main Menu \n\r");
+    UARTSend("Q - Quit Program \n\r");
+}
