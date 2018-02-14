@@ -15,6 +15,10 @@
 
 // Necessary for UART
 #include "driverlib/uart.h"
+#include <string.h>
+
+// Necessary for lower case string conversion
+#include <ctype.h>
 
 // Necessary to write data to a temporary character buffer to ultimately display
 #include <stdio.h>
@@ -43,6 +47,8 @@ static tContext sContext;
 static uint32_t countsPerSecond;
 static uint32_t characterFromComputer;
 static bool enableCounter = 0;
+static DisplayMode servicedDisplay;
+static DisplayMode requestedDisplay;
 //*****************************************************************************
 //
 // The error routine that is called if the driver library encounters an error.
@@ -63,6 +69,7 @@ void diplayADCInfoOnBoard(uint8_t* formatString,uint32_t ADCValue,
 void clearBlack(void);
 void UARTSend(const uint8_t *pui8Buffer);
 void printMainMenu(void);
+void diplaySplashOnOLED(void);
 //*****************************************************************************
 //
 // The interrupt handler for the first timer interrupt.
@@ -74,13 +81,14 @@ Timer0IntHandler(void)
     // Clear the timer interrupt.
     TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
 
-    if (ADCIntStatus(ADC0_BASE, ADC_SEQUENCE_3, false)) {
-        // Initializing variables
-        uint32_t ADCValue[1];
-        uint32_t desiredFrequency;
+    // Initializing variables
+    uint32_t ADCValue[1];
+    uint32_t desiredFrequency;
 
-        // Clear the OLED
-        clearBlack();
+    //Clear OLED
+    clearBlack();
+
+    if (ADCIntStatus(ADC0_BASE, ADC_SEQUENCE_3, false)) {
 
         // Clear the ADC interrupt flag.
         ADCIntClear(ADC0_BASE, ADC_SEQUENCE_3);
@@ -88,12 +96,11 @@ Timer0IntHandler(void)
         // Get the data
         ADCSequenceDataGet(ADC0_BASE, ADC_SEQUENCE_3, ADCValue);
 
+        // Retriggering ADC conversion
+        ADCProcessorTrigger(ADC0_BASE, ADC_SEQUENCE_3);
+
         // Calculating desired frequency
         desiredFrequency = ADCValue[0] * 159;
-
-        // Display requested and actual frequency to display
-        diplayADCInfoOnBoard("Reqst: %d", desiredFrequency, 15, DISPLAY_NUMBER);
-        diplayADCInfoOnBoard("Srv: %d", countsPerSecond, 30, DISPLAY_NUMBER);
 
         // Changing Frequency Requested should the requested and actual not match
         if (countsPerSecond != desiredFrequency) {
@@ -102,20 +109,23 @@ Timer0IntHandler(void)
             TimerEnable(TIMER1_BASE,TIMER_A);
         }
 
-        // Checking if a character is available
-        if (UARTCharsAvail(UART0_BASE)) {
-            characterFromComputer = UARTCharGetNonBlocking(UART0_BASE);
-        }
-        else {
-            characterFromComputer = '\0';
-        }
-
-        // Resetting counts per second
-        countsPerSecond = 0;
-
-        ADCProcessorTrigger(ADC0_BASE, ADC_SEQUENCE_3);
+        // Displaying request frequency
+        diplayADCInfoOnBoard("Reqst: %d", desiredFrequency, 20, requestedDisplay);
     }
 
+    // Display serviced frequency
+    diplayADCInfoOnBoard("Srv: %d", countsPerSecond, 35, servicedDisplay);
+
+    // Checking if a character is available
+    if (UARTCharsAvail(UART0_BASE)) {
+        characterFromComputer = UARTCharGetNonBlocking(UART0_BASE);
+    }
+    else {
+        characterFromComputer = '\0';
+    }
+
+    // Resetting counts per second
+    countsPerSecond = 0;
 }
 
 //*****************************************************************************
@@ -163,6 +173,7 @@ main(void)
     // Enabling the peripherals
     //************************************************************************
     SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);     // For UART
     SysCtlPeripheralEnable(SYSCTL_PERIPH_ADC0);
     SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
     SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);
@@ -175,13 +186,18 @@ main(void)
             !SysCtlPeripheralReady(SYSCTL_PERIPH_ADC0) ||
             !SysCtlPeripheralReady(SYSCTL_PERIPH_TIMER0) ||
             !SysCtlPeripheralReady(SYSCTL_PERIPH_TIMER1) ||
+            !SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOA) ||
             !SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOG));
 
     //*************************************************************************
     // Configuration
     //*************************************************************************
+    // Set GPIO A0 and A1 as UART pins.
+    GPIOPinTypeUART(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);
+
     // UART for 115,200, 8-N-1 operation.
-    UARTConfigSetExpClk(UART0_BASE, ROM_SysCtlClockGet(), 115200,
+    // Configure the UART for 115,200, 8-N-1 operation.
+    UARTConfigSetExpClk(UART0_BASE, SysCtlClockGet(), 115200,
                             (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
                              UART_CONFIG_PAR_NONE));
 
@@ -226,13 +242,21 @@ main(void)
     TimerEnable(TIMER1_BASE, TIMER_A);
 
     //************************************************************************
-    // Initializing Local Variables
+    // Initializing Variables
     //************************************************************************
     uint32_t blinkingLightCounter = 0;
     countsPerSecond = 0;
+    servicedDisplay = DISPLAY_NUMBER;
+    requestedDisplay = DISPLAY_NUMBER;
     //************************************************************************
     // starting functional calls and main while loop
     //************************************************************************
+
+    // Displaying Splash Screen
+    diplaySplashOnOLED();
+
+    // Displaying UART Menu
+    printMainMenu();
 
     // Clearing interrupt flag
     ADCIntClear(ADC0_BASE, ADC_SEQUENCE_3);
@@ -241,7 +265,7 @@ main(void)
     ADCProcessorTrigger(ADC0_BASE, ADC_SEQUENCE_3);
 
     bool enableLED = 1;
-    while(1)
+    while(tolower(characterFromComputer != 'q'))
     {
         // Blinking the LED
         if (blinkingLightCounter %
@@ -253,13 +277,33 @@ main(void)
             GPIOPinWrite(GPIO_PORTG_BASE, GPIO_PIN_2, 0);
         }
 
+        //********************************************************************
+        // Functional calls dependent on menu selection
+        //********************************************************************
         switch(tolower(characterFromComputer)) {
-            case 'm' :
-
+            case 't' :
+                enableLED = !enableLED;
+                break;
+            case 's' :
+                IntMasterDisable();
+                clearBlack();
+                diplaySplashOnOLED();
+                IntMasterEnable();
+                break;
+            case '1' :
+                requestedDisplay = (requestedDisplay + 1) % DISPLAY_COUNT;
+                break;
+            case '2' :
+                servicedDisplay = (servicedDisplay + 1) % DISPLAY_COUNT;
+                break;
         }
+        // Changing charter to null manually in case the interrupt does
+        // not trigger in time
+        characterFromComputer = '\0';
 
         blinkingLightCounter++;
     }
+    clearBlack();
 }
 
 void diplayADCInfoOnBoard(uint8_t* formatString,uint32_t ADCValue, uint32_t yLocationOnDisplay, DisplayMode displayMode) {
@@ -281,8 +325,8 @@ void diplayADCInfoOnBoard(uint8_t* formatString,uint32_t ADCValue, uint32_t yLoc
         sRect.i16YMin = yLocationOnDisplay - 4;
         sRect.i16YMax = yLocationOnDisplay + 4;
 
-        // Scaling data down from max of 4095 to fit on screen
-        sRect.i16XMax = ADCValue / 43;
+        // Scaling data down to fit on screen
+        sRect.i16XMax = ADCValue / 6783;
 
         // Setting color of display
         GrContextForegroundSet(&sContext, ClrWhite);
@@ -304,23 +348,45 @@ void clearBlack(void){
     GrRectFill(&sContext, &sRect);
 }
 
- // Purpose: Send Characters to the UART Menu console
-void UARTSend(const uint8_t *pui8Buffer) {
+// Purpose: Send a message to the Console display
+void UARTSend(const uint8_t *pui8Buffer)
+{
     // Loop while there are more characters to send.
-    uint32_t index;
-    for(index = 0; index < strlen((const char *)pui8Buffer); index++)
+    for(uint32_t index = 0; index < strlen((const char *)pui8Buffer); index++)
     {
         // Write the next character to the UART.
         UARTCharPut(UART0_BASE, pui8Buffer[index]);
     }
 }
 
+void diplaySplashOnOLED(void) {
+
+    tRectangle sRect;
+
+    clearBlack();
+
+    // Fill the top part of the screen with blue to create the banner.
+    sRect.i16XMin = 0;
+    sRect.i16YMin = 0;
+    sRect.i16XMax = GrContextDpyWidthGet(&sContext) - 1;
+    sRect.i16YMax = 9;
+    GrContextForegroundSet(&sContext, ClrDarkBlue);
+    GrRectFill(&sContext, &sRect);
+
+    // Change foreground for white text.
+    GrContextForegroundSet(&sContext, ClrWhite);
+
+    // Put the lab name in the middle of the banner.
+    GrContextFontSet(&sContext, g_psFontFixed6x8);
+    GrStringDrawCentered(&sContext, "Link_Hostetter", -1,
+                         GrContextDpyWidthGet(&sContext) / 2, 4, 0);
+
+}
+
 void printMainMenu(void) {
     UARTSend("\r\n\nT - Toggle the LED\r\n");
     UARTSend("S - Splash Screen (2s)\r\n");
-    UARTSend("1 - Toggle Data Display 1\n\r");
-    UARTSend("2 - Toggle Data Display 2\n\r");
-    UARTSend("3 - Toggle Data Display 3\n\r");
-    UARTSend("M - Return to Main Menu \n\r");
+    UARTSend("1 - Toggle Data Display Requested\n\r");
+    UARTSend("2 - Toggle Data Display Serviced\n\r");
     UARTSend("Q - Quit Program \n\r");
 }

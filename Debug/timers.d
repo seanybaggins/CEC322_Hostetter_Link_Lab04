@@ -15,8 +15,11 @@ timers.obj: C:/ti/TivaWare_C_Series-2.1.3.156/driverlib/rom.h
 timers.obj: C:/ti/TivaWare_C_Series-2.1.3.156/grlib/grlib.h
 timers.obj: C:/ti/TivaWare_C_Series-2.1.3.156/examples/boards/dk-tm4c123g/drivers/cfal96x64x16.h
 timers.obj: C:/ti/TivaWare_C_Series-2.1.3.156/driverlib/uart.h
-timers.obj: C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.6.LTS/include/stdio.h
+timers.obj: C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.6.LTS/include/string.h
 timers.obj: C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.6.LTS/include/linkage.h
+timers.obj: C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.6.LTS/include/ctype.h
+timers.obj: C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.6.LTS/include/_isfuncdcl.h
+timers.obj: C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.6.LTS/include/stdio.h
 timers.obj: C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.6.LTS/include/stdarg.h
 timers.obj: C:/ti/TivaWare_C_Series-2.1.3.156/driverlib/adc.h
 timers.obj: C:/ti/TivaWare_C_Series-2.1.3.156/driverlib/gpio.h
@@ -36,8 +39,11 @@ C:/ti/TivaWare_C_Series-2.1.3.156/driverlib/rom.h:
 C:/ti/TivaWare_C_Series-2.1.3.156/grlib/grlib.h: 
 C:/ti/TivaWare_C_Series-2.1.3.156/examples/boards/dk-tm4c123g/drivers/cfal96x64x16.h: 
 C:/ti/TivaWare_C_Series-2.1.3.156/driverlib/uart.h: 
-C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.6.LTS/include/stdio.h: 
+C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.6.LTS/include/string.h: 
 C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.6.LTS/include/linkage.h: 
+C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.6.LTS/include/ctype.h: 
+C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.6.LTS/include/_isfuncdcl.h: 
+C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.6.LTS/include/stdio.h: 
 C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.6.LTS/include/stdarg.h: 
 C:/ti/TivaWare_C_Series-2.1.3.156/driverlib/adc.h: 
 C:/ti/TivaWare_C_Series-2.1.3.156/driverlib/gpio.h: 
