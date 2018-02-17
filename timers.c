@@ -144,7 +144,7 @@ Timer1IntHandler(void)
     // Clear the timer interrupt.
     TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
     if (enableCounter == true) {
-        diplayADCInfoOnBoard(" %d", countsPerSecond, 50, DISPLAY_NUMBER);
+        diplayADCInfoOnBoard("%d", countsPerSecond, 50, DISPLAY_NUMBER);
     }
     countsPerSecond++;
 
@@ -166,19 +166,18 @@ main(void)
     SysCtlClockSet(SYSCTL_SYSDIV_1 | SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
                        SYSCTL_XTAL_16MHZ);
     #endif
+
     // Initialize the display driver.
     CFAL96x64x16Init();
 
-    //************************************************************************
-    // Disabling all peripherals
-    //************************************************************************
+    // Disabling all Interrupts
     IntMasterDisable();
 
 
     // Initialize the graphics context and find the middle X coordinate.
     GrContextInit(&sContext, &g_sCFAL96x64x16);
     GrContextFontSet(&sContext, g_psFontFixed6x8);
-    GrContextForegroundSet(&sContext, ClrRed);
+    GrContextForegroundSet(&sContext, ClrWhite);
 
     //************************************************************************
     // Enabling the peripherals
@@ -212,7 +211,9 @@ main(void)
                             (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
                              UART_CONFIG_PAR_NONE));
 
+    // Disable ADC Sequence for configuration
     ADCSequenceDisable(ADC0_BASE, ADC_SEQUENCE_3);
+
     // Configuring the ADC to read from the ADC0_BASE, 3rd sequence,
     // trigger processing, and to take priority
     ADCSequenceConfigure(ADC0_BASE, ADC_SEQUENCE_3, ADC_TRIGGER_PROCESSOR, 0);
@@ -259,6 +260,9 @@ main(void)
     countsPerSecond = 0;
     servicedDisplay = DISPLAY_NUMBER;
     requestedDisplay = DISPLAY_NUMBER;
+    bool enableLED = 1;
+    enableCounter = 0;
+
     //************************************************************************
     // starting functional calls and main while loop
     //************************************************************************
@@ -269,14 +273,12 @@ main(void)
     // Displaying UART Menu
     printMainMenu();
 
-    // Clearing interrupt flag
+    // Clearing interrupt flag for the ADC
     ADCIntClear(ADC0_BASE, ADC_SEQUENCE_3);
 
     // Start reading the ADC
     ADCProcessorTrigger(ADC0_BASE, ADC_SEQUENCE_3);
 
-    bool enableLED = 1;
-    enableCounter = 0;
     while(tolower(characterFromComputer != 'q'))
     {
         // Blinking the LED
@@ -321,10 +323,12 @@ main(void)
     clearBlack();
 }
 
-void diplayADCInfoOnBoard(uint8_t* formatString,uint32_t ADCValue, uint32_t yLocationOnDisplay, DisplayMode displayMode) {
+void diplayADCInfoOnBoard(uint8_t* formatString,uint32_t ADCValue,
+                          uint32_t yLocationOnDisplay, DisplayMode displayMode) {
     if(displayMode == DISPLAY_NUMBER) {
         uint8_t displayDataBuffer[16];
 
+        // Setting the text to be white
         GrContextForegroundSet(&sContext, ClrWhite);
 
         sprintf((char*)displayDataBuffer, (char*)formatString, ADCValue);
