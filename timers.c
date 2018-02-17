@@ -30,6 +30,7 @@
 #include "driverlib/gpio.h"
 
 #define ADC_SEQUENCE_3 3
+//#define SIXTYSIX_MHZ 1
 
 // Necessary for blinking light clock
 #define FIVE_PERCENT_CYCLE_ON 20000
@@ -46,7 +47,7 @@ typedef enum {
 static tContext sContext;
 static uint32_t countsPerSecond;
 static uint32_t characterFromComputer;
-static bool enableCounter = 0;
+static bool enableCounter;
 static DisplayMode servicedDisplay;
 static DisplayMode requestedDisplay;
 //*****************************************************************************
@@ -96,11 +97,15 @@ Timer0IntHandler(void)
         // Get the data
         ADCSequenceDataGet(ADC0_BASE, ADC_SEQUENCE_3, ADCValue);
 
-        // Retriggering ADC conversion
+        // Re-triggering ADC conversion
         ADCProcessorTrigger(ADC0_BASE, ADC_SEQUENCE_3);
 
         // Calculating desired frequency
-        desiredFrequency = ADCValue[0] * 159;
+        #ifdef SIXTYSIX_MHZ
+            desiredFrequency = ADCValue[0] * 500;
+        #else
+            desiredFrequency = ADCValue[0] * 159;
+        #endif
 
         // Changing Frequency Requested should the requested and actual not match
         if (countsPerSecond != desiredFrequency) {
@@ -138,7 +143,9 @@ Timer1IntHandler(void)
 {
     // Clear the timer interrupt.
     TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
-    //diplayADCInfoOnBoard(" %d", countsPerSecond, 50, DISPLAY_NUMBER);
+    if (enableCounter == true) {
+        diplayADCInfoOnBoard(" %d", countsPerSecond, 50, DISPLAY_NUMBER);
+    }
     countsPerSecond++;
 
 }
@@ -151,10 +158,14 @@ main(void)
     // extra stack usage.
     FPULazyStackingEnable();
 
+    #ifdef SIXTYSIX_MHZ
+    SysCtlClockSet(SYSCTL_SYSDIV_3 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN |
+                           SYSCTL_XTAL_16MHZ);
+    #else
     // Set the clocking to run directly from the crystal.
     SysCtlClockSet(SYSCTL_SYSDIV_1 | SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
                        SYSCTL_XTAL_16MHZ);
-
+    #endif
     // Initialize the display driver.
     CFAL96x64x16Init();
 
@@ -265,6 +276,7 @@ main(void)
     ADCProcessorTrigger(ADC0_BASE, ADC_SEQUENCE_3);
 
     bool enableLED = 1;
+    enableCounter = 0;
     while(tolower(characterFromComputer != 'q'))
     {
         // Blinking the LED
@@ -289,6 +301,9 @@ main(void)
                 clearBlack();
                 diplaySplashOnOLED();
                 IntMasterEnable();
+                break;
+            case 'c' :
+                enableCounter = !enableCounter;
                 break;
             case '1' :
                 requestedDisplay = (requestedDisplay + 1) % DISPLAY_COUNT;
@@ -388,5 +403,6 @@ void printMainMenu(void) {
     UARTSend("S - Splash Screen (2s)\r\n");
     UARTSend("1 - Toggle Data Display Requested\n\r");
     UARTSend("2 - Toggle Data Display Serviced\n\r");
+    UARTSend("C - Toggle Count Display\n\r");
     UARTSend("Q - Quit Program \n\r");
 }
